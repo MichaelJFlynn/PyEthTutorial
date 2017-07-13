@@ -7,7 +7,7 @@ author: Michael Flynn
 Overview
 --------
 
-A tutorial implementation of the Ethereum protocol
+A tutorial implementation of the Ethereum protocol. Test.
 
 Installation / Usage
 --------------------
