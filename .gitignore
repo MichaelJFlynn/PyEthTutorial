@@ -1,7 +1,5 @@
 *.py[cod]
 
-# C extensions
-*.so
 
 # pycharm
 .idea/
@@ -38,3 +36,6 @@ docs/_build
 
 # Cookiecutter
 output/
+
+# emacs autosave
+*~

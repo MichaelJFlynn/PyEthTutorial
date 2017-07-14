@@ -1,6 +1,5 @@
-# Dev/Deployment
-sphinx
-sphinx_rtd_theme
-nose
-coverage
-pypi-publisher
+cffi==1.10.0
+ipaddress==1.0.18
+pycparser==2.18
+rlp==0.5.1
+secp256k1==0.13.2
