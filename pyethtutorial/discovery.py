@@ -15,8 +15,8 @@ class EndPoint(object):
 
     def pack(self):
         return [self.address.packed,
-                struct.pack(">i", self.udpPort), 
-                struct.pack(">i", self.tcpPort)]
+                struct.pack(">H", self.udpPort), 
+                struct.pack(">H", self.tcpPort)]
 
                         
 class PingNode(object):
@@ -30,7 +30,7 @@ class PingNode(object):
         return [self.h256_version,
                 self.endpoint_from.pack(),
                 self.endpoint_to.pack(),
-                struct.pack(">i", time.time() + 60)]    
+                struct.pack(">I", time.time() + 60)]    
 
                                         
 class PingServer(object):
