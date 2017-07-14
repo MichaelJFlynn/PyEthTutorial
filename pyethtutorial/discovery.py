@@ -35,10 +35,7 @@ class PingNode(object):
                                         
 class PingServer(object):
     def __init__(self, my_endpoint):
-        self.UDP_PORT = 30303
-        self.UDP_IP = "127.0.0.1"
         self.endpoint = my_endpoint
-
 
         ## get private key
         priv_key_file = open('priv_key', 'r')
