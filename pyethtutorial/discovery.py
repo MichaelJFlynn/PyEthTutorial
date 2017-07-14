@@ -59,12 +59,12 @@ class PingServer(object):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind(('0.0.0.0', self.endpoint.udpPort))
 
-        def receive_pong():
+        def receive_ping():
             print "listening..."
             data, addr = sock.recvfrom(1024)
             print "received message[", addr, "]: ", data
 
-        return threading.Thread(target = receive_pong)
+        return threading.Thread(target = receive_ping)
 
     def ping(self, endpoint):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
