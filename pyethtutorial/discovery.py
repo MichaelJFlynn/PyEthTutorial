@@ -41,7 +41,8 @@ class PingServer(object):
         priv_key_file = open('priv_key', 'r')
         priv_key_serialized = priv_key_file.read()
         priv_key_file.close()
-        self.priv_key = PrivateKey(priv_key_serialized, raw = False)
+        self.priv_key = PrivateKey()
+        self.priv_key.deserialize(priv_key_serialized)
 
     def wrap_packet(self, packet):        
         payload = packet.packet_type + rlp.encode(packet.pack())
