@@ -21,13 +21,13 @@ class EndPoint(object):
                         
 class PingNode(object):
     packet_type = '\x01';
-    h256_version = '\x03';
+    version = '\x03';
     def __init__(self, endpoint_from, endpoint_to):
         self.endpoint_from = endpoint_from
         self.endpoint_to = endpoint_to
 
     def pack(self):
-        return [self.h256_version,
+        return [self.version,
                 self.endpoint_from.pack(),
                 self.endpoint_to.pack(),
                 struct.pack(">I", time.time() + 60)]    
@@ -60,7 +60,7 @@ class PingServer(object):
         def receive_ping():
             print "listening..."
             data, addr = sock.recvfrom(1024)
-            print "received message[", addr, "]: ", data
+            print "received message[", addr, "]"
 
         return threading.Thread(target = receive_ping)
 
@@ -68,5 +68,5 @@ class PingServer(object):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         ping = PingNode(self.endpoint, endpoint)
         message = self.wrap_packet(ping)
-        print "sending ping: ", message
+        print "sending ping."
         sock.sendto(message, (endpoint.address.exploded, endpoint.udpPort))
