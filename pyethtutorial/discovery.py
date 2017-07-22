@@ -152,7 +152,7 @@ class PingServer(object):
         try:
             dispatch = response_types[data[97]]
         except KeyError: 
-            print " Unknown message type: " + data[97]
+            print " Unknown message type: ", data[97]
             return
 
         payload = data[98:]
