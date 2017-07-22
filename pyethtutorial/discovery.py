@@ -3,7 +3,6 @@ import threading
 import time
 import struct
 import rlp
-import binascii
 from crypto import keccak256
 from secp256k1 import PrivateKey, PublicKey
 from ipaddress import ip_address
@@ -14,69 +13,25 @@ class EndPoint(object):
         self.udpPort = udpPort
         self.tcpPort = tcpPort
 
-    def __str__(self): 
-        return "(EP " + self.address.exploded + " " + str(self.udpPort) + " " + str(self.tcpPort)  + ")"
-
     def pack(self):
         return [self.address.packed,
                 struct.pack(">H", self.udpPort), 
                 struct.pack(">H", self.tcpPort)]
-    @classmethod
-    def unpack(cls, packed):
-        udpPort = struct.unpack(">H", packed[1])[0]
-        tcpPort = struct.unpack(">H", packed[2])[0]
-        return cls(packed[0], udpPort, tcpPort)
                         
 class PingNode(object):
     packet_type = '\x01';
     version = '\x03';
-    def __init__(self, endpoint_from, endpoint_to, timestamp):
+    def __init__(self, endpoint_from, endpoint_to):
         self.endpoint_from = endpoint_from
         self.endpoint_to = endpoint_to
-        self.timestamp = timestamp
-
-    def __str__(self):
-        return "(Ping " + str(ord(self.version)) + " " + str(self.endpoint_from) + " " + str(self.endpoint_to) + " " +  str(self.timestamp) + ")"
         
 
     def pack(self):
         return [self.version,
                 self.endpoint_from.pack(),
                 self.endpoint_to.pack(),
-                struct.pack(">I", self.timestamp)]    
+                struct.pack(">I", time.time() + 60)]    
         
-    @classmethod
-    def unpack(cls, packed):
-        assert(packed[0] == cls.version)
-        endpoint_from = EndPoint.unpack(packed[1])
-        endpoint_to = EndPoint.unpack(packed[2])
-        return cls(endpoint_from, endpoint_to)
-
-
-class Pong(object): 
-    packet_type = '\x02'
-    
-    def __init__(self, to, echo, timestamp):
-        self.to = to
-        self.echo = echo
-        self.timestamp = timestamp
-
-    def __str__(self):
-        return "(Pong " + str(self.to) + " <echo hash> " + str(self.timestamp) + ")"
-
-    def pack(self):
-        return [
-            self.to.pack(),
-            self.echo,
-            struct.pack(">I", timestamp)]
-
-    @classmethod
-    def unpack(cls, packed):
-        to = EndPoint.unpack(packed[0])
-        echo = packed[1]
-        timestamp = struct.unpack(">I", packed[2])[0]
-        return cls(to, echo, timestamp)
-    
                                         
 class PingServer(object):
     def __init__(self, my_endpoint):
@@ -102,13 +57,6 @@ class PingServer(object):
         payload_hash = keccak256(payload)
         return payload_hash + payload
 
-    def receive_pong(self, payload):
-        print " received Pong"
-        print "", Pong.unpack(rlp.decode(payload))
-
-    def receive_ping(self, payload):
-        print " received Ping"
-        print "", PingNode.unpack(rlp.decode(payload))
 
     def receive_packet(self):
         print "listening..."
@@ -144,25 +92,26 @@ class PingServer(object):
         else:
             print " Verified signature."
             
-        response_types = { 
-            PingNode.packet_type : self.receive_ping,
-            Pong.packet_type : self.receive_pong        
+        message_types = { 
+            '\x01' : 'PingNode',
+            '\x02' : 'Pong',
+            '\x03' : 'FindNeighbors', 
+            '\x04' : 'Neighbors'            
         }
 
         try:
-            dispatch = response_types[data[97]]
+            message_type = message_types[data[97]]
         except KeyError: 
             print " Unknown message type: ", data[97]
             return
 
-        payload = data[98:]
-        dispatch(payload)
+        print " " +  message_type + " received."
 
     def udp_listen(self):
         return threading.Thread(target = self.receive_packet)
 
     def ping(self, endpoint):
-        ping = PingNode(self.endpoint, endpoint, time.time() + 60)
+        ping = PingNode(self.endpoint, endpoint)
         message = self.wrap_packet(ping)
-        print "sending " + str(ping)
+        print "sending ping."
         self.sock.sendto(message, (endpoint.address.exploded, endpoint.udpPort))
