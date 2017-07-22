@@ -18,11 +18,11 @@ class EndPoint(object):
                 struct.pack(">H", self.udpPort), 
                 struct.pack(">H", self.tcpPort)]
 
-    # @classmethod
-    # def unpack(cls, packed):
-    #     udpPort = struct.unpack(">H", packed[1])
-    #     tcpPort = struct.unpack(">H", packed[2])
-    #     return cls(packed[0], udpPort, tcpPort)
+    @classmethod
+    def unpack(cls, packed):
+        udpPort = struct.unpack(">H", packed[1])
+        tcpPort = struct.unpack(">H", packed[2])
+        return cls(packed[0], udpPort, tcpPort)
                         
 class PingNode(object):
     packet_type = '\x01';
@@ -38,12 +38,12 @@ class PingNode(object):
                 self.endpoint_to.pack(),
                 struct.pack(">I", time.time() + 60)]    
         
-    # @classmethod
-    # def unpack(cls, packed):
-    #     assert packed[0] = cls.version
-    #     endpoint_from = EndPoint.unpack(packed[1])
-    #     endpoint_to = EndPoint.unpack(packed[2])
-    #     return cls(endpoint_from, endpoint_to)
+    @classmethod
+    def unpack(cls, packed):
+        assert packed[0] = cls.version
+        endpoint_from = EndPoint.unpack(packed[1])
+        endpoint_to = EndPoint.unpack(packed[2])
+        return cls(endpoint_from, endpoint_to)
 
                                         
 class PingServer(object):
@@ -119,14 +119,13 @@ class PingServer(object):
             return
 
         print " " +  message_type + " received."
-        # payload = data[98:]
-        # print rlp.decode(payload)
+        payload = data[98:]
+        print rlp.decode(payload)
 
     def udp_listen(self):
         return threading.Thread(target = self.receive_packet)
 
     def ping(self, endpoint):
-        ## new socket: bad!
         ping = PingNode(self.endpoint, endpoint)
         message = self.wrap_packet(ping)
         print "sending ping."
