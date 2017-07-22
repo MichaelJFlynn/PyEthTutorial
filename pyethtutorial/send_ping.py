@@ -1,7 +1,7 @@
 from discovery import EndPoint, PingNode, PingServer
 
 my_endpoint = EndPoint(u'52.4.20.183', 30303, 30303)
-their_endpoint = EndPoint(u'127.0.0.1', 30303, 30303)
+their_endpoint = EndPoint(u'13.93.211.84', 30303, 30303)
 
 server = PingServer(my_endpoint)
 

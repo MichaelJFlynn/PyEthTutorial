@@ -26,6 +26,8 @@ class PingNode(object):
         self.endpoint_from = endpoint_from
         self.endpoint_to = endpoint_to
 
+        
+
     def pack(self):
         return [self.version,
                 self.endpoint_from.pack(),
@@ -44,6 +46,10 @@ class PingServer(object):
         self.priv_key = PrivateKey()
         self.priv_key.deserialize(priv_key_serialized)
 
+        ## init socket
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.bind(('0.0.0.0', self.endpoint.udpPort))
+
     def wrap_packet(self, packet):        
         payload = packet.packet_type + rlp.encode(packet.pack())
         sig = self.priv_key.ecdsa_sign_recoverable(keccak256(payload), raw = True)
@@ -54,19 +60,16 @@ class PingServer(object):
         return payload_hash + payload
 
     def udp_listen(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind(('0.0.0.0', self.endpoint.udpPort))
-
         def receive_ping():
             print "listening..."
-            data, addr = sock.recvfrom(1024)
+            data, addr = self.sock.recvfrom(1024)
             print "received message[", addr, "]"
 
         return threading.Thread(target = receive_ping)
 
     def ping(self, endpoint):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        ## new socket: bad!
         ping = PingNode(self.endpoint, endpoint)
         message = self.wrap_packet(ping)
         print "sending ping."
-        sock.sendto(message, (endpoint.address.exploded, endpoint.udpPort))
+        self.sock.sendto(message, (endpoint.address.exploded, endpoint.udpPort))
