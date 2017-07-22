@@ -6,6 +6,7 @@
 .idea
 
 # Packages
+*.eggs
 *.egg
 *.egg-info
 build
