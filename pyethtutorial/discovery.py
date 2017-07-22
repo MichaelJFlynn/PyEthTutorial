@@ -68,7 +68,6 @@ class PingServer(object):
         return threading.Thread(target = receive_ping)
 
     def ping(self, endpoint):
-        ## new socket: bad!
         ping = PingNode(self.endpoint, endpoint)
         message = self.wrap_packet(ping)
         print "sending ping."
