@@ -8,6 +8,7 @@
 # Packages
 *.egg
 *.egg-info
+.eggs
 build
 eggs
 parts

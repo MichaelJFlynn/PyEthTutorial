@@ -7,20 +7,12 @@ author: Michael Flynn
 Overview
 --------
 
-A tutorial implementation of the Ethereum protocol. Test.
+A tutorial implementation of the Ethereum protocol. Read starting at
+
+https://ocalog.com/post/10/
 
 Installation / Usage
 --------------------
-
-To install use pip:
-
-    $ pip install pyethtutorial
-
-
-Or clone the repo:
-
-    $ git clone https://github.com/MichaelJFlynn/pyethtutorial.git
-    $ python setup.py install
     
 Contributing
 ------------
