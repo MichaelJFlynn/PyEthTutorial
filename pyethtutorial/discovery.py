@@ -102,7 +102,7 @@ class PingServer(object):
         try:
             message_type = message_types[data[97]]
         except KeyError: 
-            print " Unknown message type: ", data[97]
+            print " Unknown message type: " + data[97]
             return
 
         print " " +  message_type + " received."
