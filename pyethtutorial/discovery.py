@@ -110,11 +110,14 @@ class PingServer(object):
         print " received Ping"
         print "", PingNode.unpack(rlp.decode(payload))
 
-    def receive_packet(self):
+    def receive(self):
         print "listening..."
         data, addr = self.sock.recvfrom(1024)
         print "received message[", addr, "]:"
+
         ## decode response
+
+        ## verify hash
         msg_hash = data[:32]
         if msg_hash != keccak256(data[32:]):
             print " First 32 bytes are not keccak256 hash of the rest."
@@ -122,6 +125,7 @@ class PingServer(object):
         else:
             print " Verified message hash."
 
+        ## verify signature
         signature = data[32:97]
         signed_data = data[97:]
         deserialized_sig = self.priv_key.ecdsa_recoverable_deserialize(signature[:64],
@@ -159,7 +163,7 @@ class PingServer(object):
         dispatch(payload)
 
     def udp_listen(self):
-        return threading.Thread(target = self.receive_packet)
+        return threading.Thread(target = self.receive)
 
     def ping(self, endpoint):
         ping = PingNode(self.endpoint, endpoint, time.time() + 60)
