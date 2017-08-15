@@ -4,6 +4,7 @@ import time
 import struct
 import rlp
 import binascii
+import select
 from crypto import keccak256
 from secp256k1 import PrivateKey, PublicKey
 from ipaddress import ip_address
@@ -26,10 +27,58 @@ class EndPoint(object):
         udpPort = struct.unpack(">H", packed[1])[0]
         tcpPort = struct.unpack(">H", packed[2])[0]
         return cls(packed[0], udpPort, tcpPort)
-                        
+
+
+class Node(object):
+    def __init__(self, key, ip, udpPort, tcpPort): 
+        self.key = binascii.a2b_hex(key)
+        self.ip = ip
+        self.udpPort = udpPort
+        self.tcpPort = tcpPort        
+        
+    def __str__(self):
+        if self.tcpPort == self.udpPort:
+            return "enode://" + binascii.b2a_hex(self.key) + "@" + self.ip + (":%s" % self.tcpPort)
+        else:
+            return "enode://" + binascii.b2a_hex(self.key) + "@" + self.ip + (":%s?discport=%s" % (self.tcpPort, self.udpPort))
+
+    def to_endpoint(self):
+        return EndPoint(self.ip, self.udpPort, self.tcpPort)
+
+
+bootnode = Node("3f1d12044546b76342d59d4a05532c14b85aa669704bfe1f864fe079415aa2c02d743e03218e57a33fb94523adb54032871a6c51b2cc5514cb7c7e35b3ed0a99",
+                u'13.93.211.84',
+                30303,
+                30303)
+
+
+
+class FindNeighbors(object): 
+    packet_type = '\x03'
+
+    def __init__(self, target, timestamp):
+        self.target = target
+        self.timestamp = timestamp
+    
+    def __str__(self): 
+        return "(FN " + hex(self.target)[:7] + "... " + str(self.timestamp) + ")"
+        
+    def pack(self):
+        return [
+            self.target, 
+            struct.pack(">I", self.timestamp)
+        ]
+
+    @classmethod
+    def unpack(cls, packed):
+        timestamp = struct.unpack(">I", packed[1])[0]
+        return cls(packed[0], timestamp)
+        
+
+               
 class PingNode(object):
-    packet_type = '\x01';
-    version = '\x03';
+    packet_type = '\x01'
+    version = '\x03'
     def __init__(self, endpoint_from, endpoint_to, timestamp):
         self.endpoint_from = endpoint_from
         self.endpoint_to = endpoint_to
@@ -92,6 +141,8 @@ class PingServer(object):
         ## init socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind(('0.0.0.0', self.endpoint.udpPort))
+        ## set socket non-blocking mode
+        self.sock.setblocking(0)
 
     def wrap_packet(self, packet):        
         payload = packet.packet_type + rlp.encode(packet.pack())
@@ -112,7 +163,12 @@ class PingServer(object):
 
     def receive(self):
         print "listening..."
+        ready = select.select([self.sock], [], [], 5.0) 
+        if not ready[0]:
+            print "Listen timed out"  
+            return
         data, addr = self.sock.recvfrom(1024)
+
         print "received message[", addr, "]:"
 
         ## decode response
@@ -165,8 +221,7 @@ class PingServer(object):
     def udp_listen(self):
         return threading.Thread(target = self.receive)
 
-    def ping(self, endpoint):
-        ping = PingNode(self.endpoint, endpoint, time.time() + 60)
-        message = self.wrap_packet(ping)
-        print "sending " + str(ping)
+    def send(self, packet, endpoint):
+        message = self.wrap_packet(packet)
+        print "sending " + str(packet)
         self.sock.sendto(message, (endpoint.address.exploded, endpoint.udpPort))
