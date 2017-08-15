@@ -51,8 +51,6 @@ bootnode = Node("3f1d12044546b76342d59d4a05532c14b85aa669704bfe1f864fe079415aa2c
                 30303,
                 30303)
 
-
-
 class FindNeighbors(object): 
     packet_type = '\x03'
 
@@ -61,7 +59,7 @@ class FindNeighbors(object):
         self.timestamp = timestamp
     
     def __str__(self): 
-        return "(FN " + hex(self.target)[:7] + "... " + str(self.timestamp) + ")"
+        return "(FN " + binascii.b2a_hex(self.target)[:7] + "... " + str(self.timestamp) + ")"
         
     def pack(self):
         return [
