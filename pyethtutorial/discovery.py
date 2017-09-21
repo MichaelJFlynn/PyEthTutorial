@@ -22,34 +22,16 @@ class EndPoint(object):
         return [self.address.packed,
                 struct.pack(">H", self.udpPort), 
                 struct.pack(">H", self.tcpPort)]
+
     @classmethod
     def unpack(cls, packed):
         udpPort = struct.unpack(">H", packed[1])[0]
-        tcpPort = struct.unpack(">H", packed[2])[0]
+        if packed[2] == '': 
+            tcpPort = udpPort
+        else:
+            tcpPort = struct.unpack(">H", packed[2])[0]
         return cls(packed[0], udpPort, tcpPort)
 
-
-class Node(object):
-    def __init__(self, key, ip, udpPort, tcpPort): 
-        self.key = binascii.a2b_hex(key)
-        self.ip = ip
-        self.udpPort = udpPort
-        self.tcpPort = tcpPort        
-        
-    def __str__(self):
-        if self.tcpPort == self.udpPort:
-            return "enode://" + binascii.b2a_hex(self.key) + "@" + self.ip + (":%s" % self.tcpPort)
-        else:
-            return "enode://" + binascii.b2a_hex(self.key) + "@" + self.ip + (":%s?discport=%s" % (self.tcpPort, self.udpPort))
-
-    def to_endpoint(self):
-        return EndPoint(self.ip, self.udpPort, self.tcpPort)
-
-
-bootnode = Node("3f1d12044546b76342d59d4a05532c14b85aa669704bfe1f864fe079415aa2c02d743e03218e57a33fb94523adb54032871a6c51b2cc5514cb7c7e35b3ed0a99",
-                u'13.93.211.84',
-                30303,
-                30303)
 
 class FindNeighbors(object): 
     packet_type = '\x03'
@@ -71,9 +53,49 @@ class FindNeighbors(object):
     def unpack(cls, packed):
         timestamp = struct.unpack(">I", packed[1])[0]
         return cls(packed[0], timestamp)
-        
 
-               
+class Node(object):
+
+    def __init__(self, endpoint, node):
+        self.endpoint = endpoint
+        self.node = node
+
+    def __str__(self):
+        return "(N " + binascii.b2a_hex(self.node)[:7] + "...)"
+    
+    def pack(self):
+        packed = self.endpoint.pack()
+        packed.append(node)
+        return packed
+
+    @classmethod
+    def unpack(cls, packed):
+        endpoint = EndPoint.unpack(packed[0:3])
+        return cls(endpoint, packed[3])
+
+class Neighbors(object): 
+    packet_type = '\x04'
+
+    def __init__(self, nodes, timestamp):
+        self.nodes = nodes
+        self.timestamp = timestamp
+    
+    def __str__(self): 
+        return "(Ns [" + ", ".join(map(str, self.nodes)) + "] " + str(self.timestamp) + ")"
+        
+    def pack(self):
+        return [
+            map(lambda x: x.pack(), self.nodes), 
+            struct.pack(">I", self.timestamp)
+        ]
+
+    @classmethod
+    def unpack(cls, packed):
+        nodes = map(lambda x: Node.unpack(x), packed[0])
+        timestamp = struct.unpack(">I", packed[1])[0]
+        return cls(nodes, timestamp)
+
+                       
 class PingNode(object):
     packet_type = '\x01'
     version = '\x03'
@@ -94,10 +116,11 @@ class PingNode(object):
         
     @classmethod
     def unpack(cls, packed):
-        assert(packed[0] == cls.version)
+        ## assert(packed[0] == cls.version)
         endpoint_from = EndPoint.unpack(packed[1])
         endpoint_to = EndPoint.unpack(packed[2])
-        return cls(endpoint_from, endpoint_to)
+        timestamp = struct.unpack(">I", packed[3])[0]
+        return cls(endpoint_from, endpoint_to, timestamp)
 
 
 class Pong(object): 
@@ -115,17 +138,17 @@ class Pong(object):
         return [
             self.to.pack(),
             self.echo,
-            struct.pack(">I", timestamp)]
+            struct.pack(">I", self.timestamp)]
 
     @classmethod
     def unpack(cls, packed):
         to = EndPoint.unpack(packed[0])
         echo = packed[1]
         timestamp = struct.unpack(">I", packed[2])[0]
-        return cls(to, echo, timestamp)
-    
+        return cls(to, echo, timestamp)    
                                         
-class PingServer(object):
+class Server(object):
+
     def __init__(self, my_endpoint):
         self.endpoint = my_endpoint
 
@@ -151,26 +174,36 @@ class PingServer(object):
         payload_hash = keccak256(payload)
         return payload_hash + payload
 
-    def receive_pong(self, payload):
+    def receive_pong(self, payload, msg_hash):
         print " received Pong"
         print "", Pong.unpack(rlp.decode(payload))
 
-    def receive_ping(self, payload):
+    def receive_ping(self, payload, msg_hash):
         print " received Ping"
-        print "", PingNode.unpack(rlp.decode(payload))
+        ping = PingNode.unpack(rlp.decode(payload))
+        print "", 
+        pong = Pong(ping.endpoint_from, msg_hash, time.time() + 60)
+        print "  sending Pong response: " + str(pong)
+        self.send(pong, pong.to)
 
-    def receive(self):
+    def receive_find_neighbors(self, payload, msg_hash):
+        print " received FindNeighbors"
+        print "", FindNeighbors.unpack(rlp.decode(payload))
+
+    def receive_neighbors(self, payload, msg_hash):
+        print " received Neighbors"
+        print "", Neighbors.unpack(rlp.decode(payload))
+
+    def listen(self):
         print "listening..."
-        ready = select.select([self.sock], [], [], 5.0) 
-        if not ready[0]:
-            print "Listen timed out"  
-            return
-        data, addr = self.sock.recvfrom(1024)
+        while True:
+            ready = select.select([self.sock], [], [], 1.0) 
+            if ready[0]:
+                data, addr = self.sock.recvfrom(2048)
+                print "received message[", addr, "]:"        
+                self.receive(data)
 
-        print "received message[", addr, "]:"
-
-        ## decode response
-
+    def receive(self, data):
         ## verify hash
         msg_hash = data[:32]
         if msg_hash != keccak256(data[32:]):
@@ -187,8 +220,8 @@ class PingServer(object):
             
 
         remote_pubkey = self.priv_key.ecdsa_recover(keccak256(signed_data),
-                                                      deserialized_sig,
-                                                      raw = True)
+                                                    deserialized_sig,
+                                                    raw = True)
         pub = PublicKey()
         pub.public_key = remote_pubkey
         
@@ -204,7 +237,9 @@ class PingServer(object):
             
         response_types = { 
             PingNode.packet_type : self.receive_ping,
-            Pong.packet_type : self.receive_pong        
+            Pong.packet_type : self.receive_pong,
+            FindNeighbors.packet_type : self.receive_find_neighbors,
+            Neighbors.packet_type : self.receive_neighbors
         }
 
         try:
@@ -214,10 +249,12 @@ class PingServer(object):
             return
 
         payload = data[98:]
-        dispatch(payload)
+        dispatch(payload, msg_hash)
 
-    def udp_listen(self):
-        return threading.Thread(target = self.receive)
+    def listen_thread(self):
+        thread = threading.Thread(target = self.listen)
+        thread.daemon = True
+        return thread
 
     def send(self, packet, endpoint):
         message = self.wrap_packet(packet)
