@@ -13,18 +13,20 @@ bootnode_endpoint = EndPoint(u'13.93.211.84',
                     30303,
                     30303)
 bootnode = Node(bootnode_endpoint,
-                    binascii.a2b_hex(bootnode_key))
+                binascii.a2b_hex(bootnode_key))
 
 my_endpoint = EndPoint(u'52.4.20.183', 30303, 30303)
-server = Server(my_endpoint)
+server = Server(my_endpoint, bootnode)
 
-fn = FindNeighbors(bootnode.node, time.time() + 60)
-ping = PingNode(my_endpoint, bootnode.endpoint, time.time() + 60)
+# fn = FindNeighbors(bootnode.node, time.time() + 60)
+# ping = PingNode(my_endpoint, bootnode.endpoint, time.time() + 60)
 
 listen_thread = server.listen_thread()
 listen_thread.start()
 
-server.send(ping, bootnode.endpoint)
-time.sleep(5)
-server.send(fn, bootnode.endpoint)
-time.sleep(3)
+server.discover()
+
+# server.send(ping, bootnode.endpoint)
+# time.sleep(5)
+# server.send(fn, bootnode.endpoint)
+# time.sleep(3)
