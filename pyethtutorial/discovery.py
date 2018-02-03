@@ -10,6 +10,20 @@ from crypto import keccak256
 from secp256k1 import PrivateKey, PublicKey
 from ipaddress import ip_address
 
+## find first bit different
+def first_bigendian_bit_different(a, b):
+    assert len(a) == len(b)
+    l = len(a)
+    
+    i = 0
+    for j in range(l):
+        xor = ord(a[l-j-1])^ord(b[l-j-1])
+        for k in range(8):
+            if (1 << k) & xor != 0:
+                return i 
+            else:
+                i = i + 1
+
 class EndPoint(object):
     def __init__(self, address, udpPort, tcpPort):
         self.address = ip_address(address)
@@ -26,10 +40,15 @@ class EndPoint(object):
 
     @classmethod
     def unpack(cls, packed):
-        udpPort = struct.unpack(">H", packed[1])[0]
-        if packed[2] == '': 
+        assert packed[1] != '' or packed[2] != ''
+        if packed[1] == '':
+            tcpPort = struct.unpack(">H", packed[2])[0]
+            udpPort = tctPort
+        elif packed[2] == '': 
+            udpPort = struct.unpack(">H", packed[1])[0]
             tcpPort = udpPort
         else:
+            udpPort = struct.unpack(">H", packed[1])[0]
             tcpPort = struct.unpack(">H", packed[2])[0]
         return cls(packed[0], udpPort, tcpPort)
 
@@ -63,10 +82,16 @@ class Node(object):
 
     def __str__(self):
         return "(N " + binascii.b2a_hex(self.node)[:7] + "...)"
+
+    def __eq__(self, other):
+        return self.node == other.node
+
+    def __ne__(self, other): 
+        return self.node != other.node
     
     def pack(self):
         packed = self.endpoint.pack()
-        packed.append(node)
+        packed.append(self.node)
         return packed
 
     @classmethod
@@ -147,6 +172,80 @@ class Pong(object):
         echo = packed[1]
         timestamp = struct.unpack(">I", packed[2])[0]
         return cls(to, echo, timestamp)    
+
+
+class PeerTable(object):
+
+    ## number of peers per row of routing table
+    peers_per_row = 16
+
+
+    def __init__(self, priv_key):
+        ## 512 bit public key
+        self.table = [{} for i in range(512)]
+        self.my_key = priv_key.pubkey.serialize(compressed = False)[1:]
+
+    def update(self, node):
+        ## get bit of first difference
+        i = first_bigendian_bit_different(self.my_key, node.node)
+        
+        ## if node is in the list, update the last time seen
+        if node in self.table[i]:
+            print "already in there!"
+            self.table[i][node] = time.time()
+        else:
+            ## if we have k peers, remove one peer before adding.
+            if len(self.table[i]) >= self.peers_per_row:
+                min_time = min(self.table[i].values())
+                self.table[i] = {p:t for p,t in self.table[i].iteritems() if t != min_time}
+            self.table[i][node] = time.time()
+
+
+    def pop_old_nodes(self, limit):
+        old_nodes = []
+        for i in range(len(self.table)):
+            nodes = [node for node, t in self.table[i].iteritems() if time.time() - t > limit]
+            self.table[i] = {node:t for node, t in self.table[i].iteritems() if time.time() - t <= limit}
+            old_nodes.extend(nodes)
+        return old_nodes
+
+    def size(self):
+        return sum([len(k) for k in self.table])
+
+    def iterate_nodes(self):
+        for row in self.table:
+            for node in row:
+                yield node
+
+    def contains(self, node):
+        ## peertable contains self-node, for debugging purposes
+        if node.node == self.my_key:
+            return True
+
+        return node in self.iterate_nodes()
+
+    def random_peer(self):
+        assert self.size() > 0
+        row = random.choice([row for row in self.table if len(row) > 0])
+        return random.choice(row.keys())
+
+    def check_ip(self, ip_address):
+        return [node for node in self.iterate_nodes() if node.endpoint.address.exploded == ip_address]
+
+    def get_neighbors(self, target):
+        ## we want to improve the bytes by at least one. We are the
+        ## same as the target up to i bytes, at that point we are
+        ## different. Every node in the ith bucked is different from
+        ## us at that bit as well, and therefore the same as the
+        ## node. Therefore, if we return all the nodes in that bucket,
+        ## we will have returned all nodes that we know that are at
+        ## least one bit closer to the target.    
+        i = first_bigendian_bit_different(self.my_key, target)
+        if i:
+            return [node for node in self.table[i].keys()]
+        else:
+            return []
+
                                         
 class Server(object):
 
@@ -155,6 +254,7 @@ class Server(object):
 
     ## time to wait for peer response
     timeout_time = 3
+
 
     ## min peers
     min_peers = 25
@@ -179,7 +279,7 @@ class Server(object):
         ## discovery protocol variables
         self.expecting_pong = {}
         self.expecting_neighbors = {}
-        self.peers = []
+        self.peers = PeerTable(self.priv_key)
 
     def wrap_packet(self, packet):        
         payload = packet.packet_type + rlp.encode(packet.pack())
@@ -195,8 +295,10 @@ class Server(object):
         print "", Pong.unpack(rlp.decode(payload))
 
         if self.expecting_pong.pop(node.node, None):
-            if not node.node in map(lambda x: x.node, self.peers):
-                self.peers.append(node) 
+            if not self.peers.contains(node):
+                print " adding peer"
+                self.peers.update(node) 
+                assert self.peers.contains(node) 
 
     def receive_ping(self, payload, msg_hash, node):
         print " received Ping"
@@ -208,8 +310,17 @@ class Server(object):
             
         
     def receive_find_neighbors(self, payload, msg_hash, node):
+        fn = FindNeighbors.unpack(rlp.decode(payload))
         print " received FindNeighbors"
-        print "", FindNeighbors.unpack(rlp.decode(payload))
+        print "", fn
+
+        if self.peers.contains(node):
+            nodes = self.peers.get_neighbors(fn.target)
+            neighbors = Neighbors(nodes, time.time() + 60)
+            print "  sending Neighbors response to: " + str(fn)
+            self.send(neighbors, node.endpoint)
+        else:
+            print "  unknown node requested FindNeighbors (%d)" % len(self.peers.check_ip(node.endpoint.address.exploded))
 
     def receive_neighbors(self, payload, msg_hash, node):
         print " received Neighbors"
@@ -219,6 +330,9 @@ class Server(object):
         if node.node in self.expecting_neighbors:
             for neighbor in neighbors.nodes:
                 self.add_peer(neighbor)
+
+
+                
 
     def listen(self):
         print "listening..."
@@ -295,12 +409,14 @@ class Server(object):
         print "sending " + str(packet)
         self.sock.sendto(message, (endpoint.address.exploded, endpoint.udpPort))
 
+
     def connecting_to(self, node):
         return node in self.expecting_pong
 
+
     def add_peer(self, node):
-        if node.node in map(lambda x: x.node, self.peers):
-            return
+        # if self.peers.contains(node):
+        #     return
         
         if self.connecting_to(node):
             return
@@ -329,19 +445,27 @@ class Server(object):
             self.expecting_pong = {k:t for k,t in self.expecting_pong.iteritems() if (now-t) < self.timeout_time}
 
             ## print the current discovery status
+            peers = self.peers.size()
             print "Discovery status: %d peers / %d min peers / %d connecting" % (
-                len(self.peers),
+                peers,
                 self.min_peers,
                 len(self.expecting_pong)
             )
 
             ## add peer if not enough peers
-            if len(self.peers) < self.min_peers:
-                if len(self.peers) == 0:
+            if peers < self.min_peers:
+                if peers == 0:
                     self.add_peer(self.bootnode)
                 else:
-                    node = random.choice(self.peers)
+                    node = self.peers.random_peer()
                     self.query_neighbors(node)
-             
+                    
+            ## if we haven't seen a node for 10 minutes (seconds to debug), remove and add again
+            old_nodes = self.peers.pop_old_nodes(60)
+            if len(old_nodes) > 0:
+                print "Refreshing %d old_nodes" % len(old_nodes)
+            for node in old_nodes:
+                self.add_peer(node)            
+
             time.sleep(self.discovery_rest_time)
         

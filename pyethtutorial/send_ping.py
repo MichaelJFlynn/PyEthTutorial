@@ -1,4 +1,5 @@
 from discovery import EndPoint, PingNode, Server, FindNeighbors, Node
+import discovery
 import binascii
 import time
 
@@ -18,14 +19,23 @@ bootnode = Node(bootnode_endpoint,
 my_endpoint = EndPoint(u'52.4.20.183', 30303, 30303)
 server = Server(my_endpoint, bootnode)
 
+
 # fn = FindNeighbors(bootnode.node, time.time() + 60)
 # ping = PingNode(my_endpoint, bootnode.endpoint, time.time() + 60)
 
 listen_thread = server.listen_thread()
 listen_thread.start()
 
-server.discover()
+discover_thread = server.discover_thread()
+discover_thread.start()
 
+# fn = FindNeighbors(server.peers.my_key, time.time() + 3)
+# server.send(fn, my_endpoint)
+# my_node = Node(my_endpoint, server.peers.my_key)
+# server.add_peer(my_node)
+
+## weird server:
+## 13.228.49.68
 # server.send(ping, bootnode.endpoint)
 # time.sleep(5)
 # server.send(fn, bootnode.endpoint)
